@@ -12,7 +12,6 @@ from dotenv import load_dotenv
 # تحميل المتغيرات السرية والبيئية من ملف .env تلقائياً
 load_dotenv()
 
-# قراءة التوكن والمفتاح بأمان كامل لحماية الشفرة على GitHub
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
@@ -27,6 +26,13 @@ class ReceiptData(BaseModel):
     receipt_no: str
     final_report: str
 
+def convert_arabic_digits_to_english(text_str):
+    """ دالة سريعة جداً لتحويل الأرقام العربية/الهندية (٠١٢٣٤٥٦٧٨٩) إلى إنجليزية فوراً """
+    arabic_digits = "٠١٢٣٤٥٦٧٨٩"
+    english_digits = "0123456789"
+    translation_table = str.maketrans(arabic_digits, english_digits)
+    return text_str.translate(translation_table)
+
 async def analyze_receipt_ultra_fast(image_bytes, additional_text=""):
     """ دالة معالجة الصورة بأقصى سرعة ممكنة عبر الـ RAM """
     try:
@@ -36,11 +42,11 @@ async def analyze_receipt_ultra_fast(image_bytes, additional_text=""):
         )
         
         prompt = f"""
-        أنت نظام أتمتة لشركة "الباخرة". استخرج بدقة فورية:
-        1. customer_phone: هاتف الزبون.
-        2. client_name: اسم البيج/المتجر.
+        أنت نظام أتمتة لشركة "الباخرة". استخرج بدقة فورية من الوصل:
+        1. customer_phone: هاتف الزبون (حقل رقم الزبون). التزام صارم: حول الأرقام إلى أرقام إنجليزية فقط (مثل: 077... أو 078...).
+        2. client_name: اسم البيج/المتجر (اسم العميل).
         3. customer_name: اسم الزبون.
-        4. receipt_no: رقم الوصل.
+        4. receipt_no: رقم الوصل المطبوع.
         5. final_report: التبليغ النهائي لسبب الرفض أو التأجيل بناءً على تحديث المندوب التالي: ({additional_text}). لا تكتب أبداً تم التوصيل بنجاح.
         """
         
@@ -83,14 +89,20 @@ async def process_delivery_report(update: Update, context: ContextTypes.DEFAULT_
     customer = str(ai_results.get("customer_name", "")).strip()
     report_text = str(ai_results.get("final_report", "")).strip()
 
+    # ⚡ تحويل الهاتف فوراً لإنجليزية في حال تسلل أي رقم عربي من مسح الصورة
+    phone = convert_arabic_digits_to_english(phone)
+
     keyboard = []
     if phone and phone not in ["null", "غير محدد", ""]:
+        # إزالة أي رموز أو مسافات، والابقاء على الأرقام الصافية فقط
         clean_phone = re.sub(r'\D', '', phone)
+        
+        # ضبط صيغة المفتاح الدولي للعراق لتأمين عمل رابط الواتساب 100%
         if clean_phone.startswith('0'): 
             clean_phone = '964' + clean_phone[1:]
         elif clean_phone.startswith('+'):
             clean_phone = clean_phone[1:]
-        elif not clean_phone.startswith('964'):
+        elif not clean_phone.startswith('964') and len(clean_phone) >= 10:
             clean_phone = '964' + clean_phone
             
         whatsapp_url = f"https://wa.me/{clean_phone}"
